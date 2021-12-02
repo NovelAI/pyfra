@@ -3,11 +3,22 @@ from pathlib import Path
 import pyfra.contrib.web as web
 
 @always_rerun()
-def tpu_vm_create(rem_gcp, tpu_name, zone="europe-west4-a", type="v3-8"):
-    user = rem_gcp.sh("echo $USER").strip()
+def tpu_vm_create(tpu_name, rem_gcp=None, user=None, zone="europe-west4-a", type="v3-8"):
+    if rem_gcp:
+        machine = rem_gcp
+
+    else:
+        machine = local
+        
+    if user is None:
+        user = machine.sh("echo $USER").strip()
 
     def _get_tpu_ssh():
-        ip = rem_gcp.sh(f"gcloud alpha compute tpus tpu-vm describe {tpu_name} --format='get(networkEndpoints[0].accessConfig.externalIp)'".strip())
+        if local:
+            local.sh()
+        else:
+            ip = machine.sh(f"gcloud alpha compute tpus tpu-vm describe {tpu_name} --format='get(networkEndpoints[0].accessConfig.externalIp)'".strip())
+
         return Remote(f"{user}@{ip}")
     
     try:
@@ -17,7 +28,7 @@ def tpu_vm_create(rem_gcp, tpu_name, zone="europe-west4-a", type="v3-8"):
     except ShellException:
         pass
 
-    rem_gcp.sh(f"""
+    machine.sh(f"""
     echo y | gcloud alpha compute tpus tpu-vm delete {tpu_name}
     gcloud alpha compute tpus tpu-vm create {tpu_name} \
         --zone={zone} \
