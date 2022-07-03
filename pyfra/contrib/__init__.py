@@ -85,15 +85,22 @@ def kube_copy_ssh_key(pod: str, key_path: str = None, quiet: bool = False):
     )
 
 def kube_remote(
-    pod: str, ssh_key_path: str = None, user=None, service_name=None, quiet=False
+    pod: str, ssh_key_path: str = None, user=None, service_name=None, local=True, quiet=False
 ) -> Remote:
     """
     Get a remote object for a k8 pod
     """
-    if service_name is None:
-        service_name = pod.split("-")[0] + "-service"
-    get_ip_cmd = f"kubectl get service/{service_name} -o jsonpath='{{.status.loadBalancer.ingress[0].ip}}'"
-    ip = local.sh(get_ip_cmd, quiet=quiet).strip()
+    if not local:
+        if service_name is None:
+            service_name = pod.split("-")[0] + "-service"
+        get_ip_cmd = f"kubectl get service/{service_name} -o jsonpath='{{.status.loadBalancer.ingress[0].ip}}'"
+        ip = local.sh(get_ip_cmd, quiet=quiet).strip()
+    else:
+        if service_name:
+            ip = service_name
+        else:
+            ip = pod + "-service"
+
     if user is not None:
         ip = f"{user}@{ip}"
 
