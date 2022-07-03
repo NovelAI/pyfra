@@ -778,6 +778,8 @@ class Env(Remote):
             raise pyfra.shell.ShellException(e.returncode, rem=not self.is_local()) from e.__cause__
     
     def _install(self, python_version) -> None:   
+        self.sh("apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub")
+        self.sh('pip install /home/xuser/hugessd/pytorch/torch-1.10.1+cu113-cp38-cp38-linux_x86_64.whl')
         # install sudo if it's not installed; this is the case in some docker containers
         self.sh("sudo echo hi || { apt-get update; apt-get install sudo; }", pyenv_version=None, ignore_errors=True, quiet=True)
 
@@ -785,7 +787,7 @@ class Env(Remote):
         if python_version is not None: install_pyenv(self, python_version)
 
         # install rsync for copying files
-        self.sh("rsync --help > /dev/null || ( sudo apt-get update && sudo apt-get install -y rsync )", quiet=True)
+        self.sh("rsync --help > /dev/null || ( sudo apt-get update && sudo apt-get install -y rsync )", quiet=False)
 
     def _to_json(self) -> dict:
         return {
