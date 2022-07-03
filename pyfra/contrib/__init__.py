@@ -3,11 +3,18 @@ from pathlib import Path
 import pyfra.contrib.web as web
 
 @always_rerun()
-def tpu_vm_create(rem_gcp, tpu_name, zone="europe-west4-a", type="v3-8"):
-    user = rem_gcp.sh("echo $USER").strip()
+def tpu_remote(tpu_name, rem_gcp=None, user=None, zone="europe-west4-a", type="v3-8"):
+    if rem_gcp:
+        machine = rem_gcp
+
+    else:
+        machine = local
+        
+    if user is None:
+        user = machine.sh("echo $USER").strip()
 
     def _get_tpu_ssh():
-        ip = rem_gcp.sh(f"gcloud alpha compute tpus tpu-vm describe {tpu_name} --format='get(networkEndpoints[0].accessConfig.externalIp)'".strip())
+        ip = machine.sh(f"gcloud alpha compute tpus tpu-vm describe {tpu_name} --format='get(networkEndpoints[0].accessConfig.externalIp)'".strip())
         return Remote(f"{user}@{ip}")
     
     try:
@@ -16,19 +23,37 @@ def tpu_vm_create(rem_gcp, tpu_name, zone="europe-west4-a", type="v3-8"):
         return r
     except ShellException:
         pass
-
-    rem_gcp.sh(f"""
-    echo y | gcloud alpha compute tpus tpu-vm delete {tpu_name}
-    gcloud alpha compute tpus tpu-vm create {tpu_name} \
-        --zone={zone} \
-        --accelerator-type={type} \
-        --version=v2-alpha 
-    gcloud alpha compute tpus tpu-vm ssh {tpu_name} --zone {zone} --command="echo $(cat {local.path("~/.ssh/id_rsa.pub")}) >> ~/.ssh/authorized_keys"
-    """)
-
-    time.sleep(10)
-
+    
+    tpu_copy_ssh_key(tpu_name, quiet=True)
     return _get_tpu_ssh()
+
+def tpu_vm_sh(pod, cmd, zone="europe-west4-a", executable="bash", quiet=False):
+    """
+    Run a command in a gcp pod
+    """
+    if executable == "bash":
+        cmd = f"gcloud alpha compute tpus tpu-vm ssh {pod} --zone {zone} --command={quote(cmd)}"
+    elif executable == "sh":
+        cmd = f"gcloud compute ssh {pod} --command= /bin/sh -c {quote(cmd)}"
+    elif executable == None:
+        cmd = f"gcloud compute ssh {pod} --command={quote(cmd)}"
+    else:
+        raise ValueError(f"executable must be bash, sh or None, not {executable}")
+    return local.sh(cmd, quiet=quiet)
+
+def tpu_copy_ssh_key(pod: str, key_path: str = None, quiet: bool = False):
+    """
+    Copy an ssh key to the tpu pod
+    """
+    if key_path is None:
+        for pubkey in (Path(local.home()) / ".ssh").glob("*.pub"):
+            tpu_copy_ssh_key(pod, pubkey)
+        return
+    tpu_vm_sh(
+        pod,
+        f"echo {quote(local.path(key_path).read().strip())} >> ~/.ssh/authorized_keys",
+        quiet=quiet,
+    )
 
 def kube_sh(pod, cmd, executable="bash", quiet=False):
     """
@@ -41,7 +66,7 @@ def kube_sh(pod, cmd, executable="bash", quiet=False):
     elif executable == None:
         cmd = f"kubectl exec -it {pod} -- {quote(cmd)}"
     else:
-        raise ValueError(f"executable must be bash or None, not {executable}")
+        raise ValueError(f"executable must be bash, sh or None, not {executable}")
     return local.sh(cmd, quiet=quiet)
 
 
@@ -51,14 +76,13 @@ def kube_copy_ssh_key(pod: str, key_path: str = None, quiet: bool = False):
     """
     if key_path is None:
         for pubkey in (Path(local.home()) / ".ssh").glob("*.pub"):
-            kube_copy_ssh_key(pod, pubkey)
+            kube_copy_ssh_key(pod, pubkey, quiet=quiet)
         return
     kube_sh(
         pod,
         f"echo {quote(local.path(key_path).read().strip())} >> ~/.ssh/authorized_keys",
         quiet=quiet,
     )
-
 
 def kube_remote(
     pod: str, ssh_key_path: str = None, user=None, service_name=None, quiet=False
