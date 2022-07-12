@@ -1,6 +1,5 @@
 from pyfra import *
 from pathlib import Path 
-import pyfra.contrib.web as web
 
 @always_rerun()
 def tpu_remote(tpu_name, rem_gcp=None, user=None, zone="europe-west4-a", type="v3-8"):
